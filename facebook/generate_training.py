@@ -4,8 +4,9 @@ from pydantic import BaseModel
 _FB_DATA_ROOT = "~/source/bigdata/data/facebook/"
 _BOT_NAME = "Jerome Swannack"
 _END_TOKEN = ""
-_BLOCKED_USER = "Facebook User" 
+_BLOCKED_USER = "Facebook User"
 _BLOCKED_USER_IN_MESSAGE = "Other user"
+
 
 class Message(BaseModel):
     sender_name: str
@@ -17,6 +18,7 @@ class Message(BaseModel):
 
 class User(BaseModel):
     name: str
+
 
 class Conversation(BaseModel):
     participants: list[User]
@@ -36,9 +38,11 @@ def _read_conversation_from_file(file: Path):
     with open(file) as f:
         return Conversation.parse_raw(f.read())
 
+
 def _get_all_conversations(root: Path):
     for file in _get_all_message_files(root):
         yield _read_conversation_from_file(file)
+
 
 def _convert_conversation_to_training_text(conversation: Conversation):
     ##  construct a string like:
@@ -81,12 +85,12 @@ def main():
             break
 
 
-
 if __name__ == "__main__":
     import logging
+
     logging.basicConfig(level=logging.INFO)
 
     import ipdb
+
     with ipdb.launch_ipdb_on_exception():
         main()
-
