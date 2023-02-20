@@ -2,6 +2,7 @@
 Sample from a trained model
 """
 import os
+import sys
 import pickle
 from contextlib import nullcontext
 import torch
@@ -20,8 +21,11 @@ seed = 1337
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 dtype = 'bfloat16' # 'float32' or 'bfloat16' or 'float16'
 compile = False # use PyTorch 2.0 to compile the model to be faster
+server = False
 exec(open('configurator.py').read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
+
+print(server)
 
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
@@ -80,10 +84,38 @@ if start.startswith('FILE:'):
 start_ids = encode(start)
 x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
 
-# run generation
-print(start, end='')
-with torch.no_grad():
-    with ctx:
-        for k in range(num_samples):
+if not server:
+    # run generation
+    print(start, end='')
+    with torch.no_grad():
+        with ctx:
+            for k in range(num_samples):
+                y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, decode=decode)
+                print('---------------')
+
+    sys.exit(0)
+
+import fastapi as fa
+import pydantic as pyd
+import uvicorn
+
+class GenerateRequest(pyd.BaseModel):
+    prompt: str
+
+class GenerateResponse(pyd.BaseModel):
+    output: str
+
+app = fa.FastAPI()
+
+@app.post("/generate")
+def _generate(config: GenerateRequest):
+    print(config)
+    start_ids = encode(config.prompt)
+    x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
+    with torch.no_grad():
+        with ctx:
             y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, decode=decode)
-            print('---------------')
+            return GenerateResponse( output=decode(y.tolist()[0]))
+    
+uvicorn.run(app, host="0.0.0.0", port=8004)
+
