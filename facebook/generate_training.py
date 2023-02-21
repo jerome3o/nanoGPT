@@ -79,7 +79,7 @@ def _convert_conversation_to_training_text(conversation: Conversation):
             s += f"{message.content}\n"
         else:
             # check if previous sender was bot name
-            if i > 0 and messages[i - 1].sender_name == _BOT_NAME:
+            if (i > 0 and messages[i - 1].sender_name == _BOT_NAME) or (i == len(messages) - 1):
                 # add end token to string
                 s += _END_TOKEN
 
