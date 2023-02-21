@@ -1,3 +1,9 @@
+import os
+import requests
+import tiktoken
+import numpy as np
+from pathlib import Path
+from tqdm import tqdm
 from pathlib import Path
 from pydantic import BaseModel
 
@@ -40,7 +46,7 @@ def _read_conversation_from_file(file: Path):
 
 
 def _get_all_conversations(root: Path):
-    for file in _get_all_message_files(root):
+    for file in tqdm(list(_get_all_message_files(root))):
         yield _read_conversation_from_file(file)
 
 
@@ -74,16 +80,33 @@ def _convert_conversation_to_training_text(conversation: Conversation):
 def main():
     # get the first 10 conversations and print the training output
 
-    i = 0
+    data = ""
     for conversation in _get_all_conversations(_FB_DATA_ROOT):
         if conversation.contains_any_blocked_user():
             continue
 
-        print(_convert_conversation_to_training_text(conversation))
-        i += 1
-        if i == 10:
-            break
+        data += _convert_conversation_to_training_text(conversation)
 
+    # adapted from shakespear example 
+    n = len(data)
+    train_data = data[:int(n*0.9)]
+    val_data = data[int(n*0.9):]
+
+    # encode with tiktoken gpt2 bpe
+    enc = tiktoken.get_encoding("gpt2")
+    train_ids = enc.encode_ordinary(train_data)
+    val_ids = enc.encode_ordinary(val_data)
+    print(f"train has {len(train_ids):,} tokens")
+    print(f"val has {len(val_ids):,} tokens")
+
+    # export to bin files
+    train_ids = np.array(train_ids, dtype=np.uint16)
+    val_ids = np.array(val_ids, dtype=np.uint16)
+    train_ids.tofile(Path(__file__).parent / "train.bin")
+    val_ids.tofile(Path(__file__).parent / "val.bin")
+
+    # train.bin has 301,966 tokens
+    # val.bin has 36,059 tokens
 
 if __name__ == "__main__":
     import logging
