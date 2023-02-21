@@ -25,7 +25,7 @@ server = False
 exec(open('configurator.py').read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
-print(server)
+print("Start server: ", server)
 
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
@@ -91,6 +91,7 @@ if not server:
         with ctx:
             for k in range(num_samples):
                 y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, decode=decode)
+                print(decode(y.tolist()[0]))
                 print('---------------')
 
     sys.exit(0)
