@@ -1,11 +1,11 @@
 venv/
 scratch/
+.env
 __pycache__/
 .ipynb_checkpoints/
 *.pyc
 .env
 *.png
 *.bin
-*.pt
-scratch/
 data.txt
+*.pt

@@ -22,6 +22,7 @@ device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 dtype = 'bfloat16' # 'float32' or 'bfloat16' or 'float16'
 compile = False # use PyTorch 2.0 to compile the model to be faster
 server = False
+bot = False
 exec(open('configurator.py').read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
@@ -84,7 +85,7 @@ if start.startswith('FILE:'):
 start_ids = encode(start)
 x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
 
-if not server:
+if not server and not bot:
     # run generation
     print(start, end='')
     with torch.no_grad():
@@ -96,27 +97,109 @@ if not server:
 
     sys.exit(0)
 
-import fastapi as fa
-import pydantic as pyd
-import uvicorn
+if server:
+    import fastapi as fa
+    import pydantic as pyd
+    import uvicorn
 
-class GenerateRequest(pyd.BaseModel):
+    class GenerateRequest(pyd.BaseModel):
+        prompt: str
+
+    class GenerateResponse(pyd.BaseModel):
+        output: str
+
+    app = fa.FastAPI()
+
+    @app.post("/generate")
+    def _generate(config: GenerateRequest):
+        print(config)
+        start_ids = encode(config.prompt)
+        x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
+        with torch.no_grad():
+            with ctx:
+                y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, decode=decode)
+                return GenerateResponse( output=decode(y.tolist()[0]))
+        
+    uvicorn.run(app, host="0.0.0.0", port=8004)
+    sys.exit(0)
+
+
+# copy over of disc bot
+
+from discord import Message, Client
+from pydantic import BaseModel
+
+API_KEY = os.environ.get("DISCORD_API_KEY")
+
+
+class PromptConfig(BaseModel):
     prompt: str
+    ai_name: str
+    human_name: str
 
-class GenerateResponse(pyd.BaseModel):
-    output: str
+config = PromptConfig(prompt="", ai_name="Jerome Swannack", human_name="Flynn Doherty")
 
-app = fa.FastAPI()
+client = Client()
 
-@app.post("/generate")
-def _generate(config: GenerateRequest):
-    print(config)
-    start_ids = encode(config.prompt)
+MESSAGE_BUFFER_SIZE = 5
+CLEAR = "$clear"
+
+
+@client.event
+async def on_ready():
+    print("We have logged in as {0.user}".format(client))
+
+
+@client.event
+async def on_message(message: Message):
+    if message.author == client.user:
+        return
+
+    if not message.channel.name.startswith("jeromebot-"):
+        return
+
+    if message.content == CLEAR:
+        return
+
+    
+
+    raw_messages = await message.channel.history(limit=MESSAGE_BUFFER_SIZE).flatten()
+    messages = []
+    for m in raw_messages:
+        if m.content == CLEAR:
+            break
+        messages.append(m)
+
+    s = "\n\n".join(
+        # f"{config.ai_name if m.author == client.user else config.human_name}: {m.content}"
+        f"{config.ai_name if m.author == client.user else m.author}: {m.content}"
+        for m in messages[::-1]
+    )
+
+    prompt = f"{s}\n\n{config.ai_name}: "
+
+    if message.content == "$prompt":
+        await message.channel.send(prompt)
+        return
+
+    start_ids = encode(prompt)
     x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
     with torch.no_grad():
         with ctx:
             y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, decode=decode)
-            return GenerateResponse( output=decode(y.tolist()[0]))
-    
-uvicorn.run(app, host="0.0.0.0", port=8004)
+            response = decode(y.tolist()[0])
 
+    # response = openai.Completion.create(
+    #     engine="text-davinci-002",
+    #     prompt=prompt,
+    #     temperature=0.9,
+    #     max_tokens=500,
+    #     presence_penalty=2,
+    #     frequency_penalty=2,
+    # )
+    import ipdb; ipdb.set_trace()
+
+    await message.channel.send(response.choices[0].text)
+
+
+client.run(API_KEY)
