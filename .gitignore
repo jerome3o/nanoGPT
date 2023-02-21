@@ -6,4 +6,5 @@ __pycache__/
 .env
 *.png
 *.bin
+*.pt
 data.txt
