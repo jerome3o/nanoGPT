@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 _FB_DATA_ROOT = "~/source/bigdata/data/facebook/"
 _BOT_NAME = "Jerome Swannack"
-_END_TOKEN = ""
+_END_TOKEN = "<|endoftext|>"
 _BLOCKED_USER = "Facebook User"
 _BLOCKED_USER_IN_MESSAGE = "Other user"
 
@@ -57,7 +57,9 @@ def _convert_conversation_to_training_text(conversation: Conversation):
     # END TOKEN
 
     s = ""
-    for message in sorted(conversation.messages, key=lambda m: m.timestamp_ms):
+    messages = sorted(conversation.messages, key=lambda m: m.timestamp_ms)
+    for i in range(len(messages)):
+        message = messages[i]
         # only accept generic type messages:
         if message.type != "Generic":
             continue
@@ -70,9 +72,18 @@ def _convert_conversation_to_training_text(conversation: Conversation):
         if message.sender_name == _BLOCKED_USER_IN_MESSAGE:
             continue
 
-        s += f"{message.sender_name}: {message.content}\n"
-        if message.sender_name == _BOT_NAME:
-            s += f"{_END_TOKEN}\n"
+        # construction logic
+        # we want consecutive messages from the same sender to be on the same line
+        # check previous message to see if it's from the same sender
+        if i > 0 and messages[i - 1].sender_name == message.sender_name:
+            s += f"{message.content}\n"
+        else:
+            # check if previous sender was bot name
+            if i > 0 and messages[i - 1].sender_name == _BOT_NAME:
+                # add end token to string
+                s += _END_TOKEN
+
+            s += f"\n{message.sender_name}: {message.content}\n"
 
     return s
 
@@ -86,6 +97,8 @@ def main():
             continue
 
         data += _convert_conversation_to_training_text(conversation)
+
+    (Path(__file__).parent / "data.txt").write_text(data)
 
     # adapted from shakespear example 
     n = len(data)
