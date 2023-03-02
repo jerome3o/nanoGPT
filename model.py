@@ -372,7 +372,9 @@ class GPT(nn.Module):
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
             
-            if idx_next == _nl_token and idx_next == prev_token:
+            # if idx_next == _nl_token and idx_next == prev_token:
+            #     return idx
+            if idx_next == _nl_token:
                 return idx
 
             prev_token = idx_next
