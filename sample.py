@@ -127,6 +127,7 @@ if server:
 # copy over of disc bot
 
 from discord import Message, Client
+import discord
 from pydantic import BaseModel
 
 API_KEY = os.environ.get("DISCORD_API_KEY")
@@ -137,12 +138,18 @@ class PromptConfig(BaseModel):
     ai_name: str
     human_name: str
 
-config = PromptConfig(prompt="", ai_name="Jerome Swannack", human_name="Flynn Doherty")
+config = PromptConfig(prompt="", ai_name="Jerome Swannack", human_name="FLYNN")
 
-client = Client()
+import discord
+client = Client(intents=discord.Intents.all())
 
 MESSAGE_BUFFER_SIZE = 5
 CLEAR = "$clear"
+
+def remove_prefix(text, prefix):
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return text  # or whatever
 
 
 @client.event
@@ -171,8 +178,8 @@ async def on_message(message: Message):
         messages.append(m)
 
     s = "\n\n".join(
-        # f"{config.ai_name if m.author == client.user else config.human_name}: {m.content}"
-        f"{config.ai_name if m.author == client.user else m.author}: {m.content}"
+        f"{config.ai_name if m.author == client.user else config.human_name}: {m.content}"
+        # f"{config.ai_name if m.author == client.user else m.author}: {m.content}"
         for m in messages[::-1]
     )
 
@@ -184,10 +191,20 @@ async def on_message(message: Message):
 
     start_ids = encode(prompt)
     x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
+
+
     with torch.no_grad():
         with ctx:
-            y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, decode=decode)
-            response = decode(y.tolist()[0])
+            resp_list = [
+                model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, decode=decode)
+                for k in range(10)
+            ]
+
+
+    resp_list = [
+        remove_prefix(decode(y.tolist()[0]), prompt).strip()
+        for y in resp_list
+    ]
 
     # response = openai.Completion.create(
     #     engine="text-davinci-002",
@@ -197,9 +214,16 @@ async def on_message(message: Message):
     #     presence_penalty=2,
     #     frequency_penalty=2,
     # )
-    import ipdb; ipdb.set_trace()
 
-    await message.channel.send(response.choices[0].text)
+
+    resp_list = sorted(resp_list, key=lambda x: -len(x))
+    print(prompt)
+    print(resp_list[0])
+    for resp in resp_list:
+        if resp and len(resp) < 2000:
+            await message.channel.send(resp)
+            return
+    await message.channel.send(resp_list[:2000])
 
 
 client.run(API_KEY)
